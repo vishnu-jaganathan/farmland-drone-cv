@@ -40,15 +40,19 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        //button that processes images when clicked
         final Button button = findViewById(R.id.button);
         button.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
 
+                //pics should be saved in directory called images
+                //named as latitude-longitude-altitude.extension
                 File root = new File(getFilesDir(), "images");
                 if (root.exists()){
                     File[] pics = root.listFiles();
 
+                    //goes through every pic in the directory
                     for(File pic : pics){
                         String filePath = pic.getPath();
                         StringBuilder builder = new StringBuilder(filePath);
@@ -79,25 +83,28 @@ public class MainActivity extends AppCompatActivity {
 
                         Bitmap bitmap = BitmapFactory.decodeFile(filePath);
 
-
+                        //loads opencv
                         System.loadLibrary(Core.NATIVE_LIBRARY_NAME);
                         OpenCVLoader.initDebug();
 
+                        //converts bitmap to opencv's mat format
                         Mat start = new Mat();
                         Bitmap v32 = bitmap.copy(Bitmap.Config.ARGB_8888, true);
                         Utils.bitmapToMat(v32, start);
 
+                        //crops out boundaries of image (battery indicator, etc.)
                         Rect crop = new Rect(200, 100, start.width() - 400, start.height() - 200);
 
                         Mat img = start.submat(crop);
                         Mat other = new Mat();
 
+                        //converts image to grayscale and turns and light colored areas black
+                        //this is done since light colored areas in farmland are generally outliers
                         Imgproc.cvtColor(img, other, Imgproc.COLOR_BGR2GRAY);
-
                         Imgproc.threshold(other, other, 160, 255, Imgproc.THRESH_TOZERO_INV);
 
 
-
+                        //calls boxoutliers to generate a list of outliers of that image and add it to our global variable
                         boxOutliers(other, altitude, latitude, longitude);
                     }
                     //getting inputted home latitude
@@ -119,12 +126,14 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    //comparator compares two double arrays by their last element
     static Comparator<double[]> comp = new Comparator<double[]>() {
         public int compare(double[] a, double[] b) {
             return (int) (b[3] - a[3]);
         }
     };
-
+    // method used to convert outliers in the picture to a list of lat,long,alt coordinates
+    // also draws boxes around the original pictures
     public static void boxOutliers(Mat pic, double altitude, double latitude, double longitude) {
 
         //calculates ground width/height in meters with formula
@@ -241,6 +250,7 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    //finds best path through top 10 outliers constrained by a start and end point
     public static ArrayList<Coordinate> generateDetailedFlight(Coordinate curr, Coordinate home){
         Collections.sort(outliers, comp);
         ArrayList<Coordinate> topTenOutliers = new ArrayList<>();
@@ -259,6 +269,12 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    //tries out all combinations of ordering and uses dynamic programming to speed up the search process
+    //at each stage, a for loop to choose some coordinate and continue recursion returning up shortest length
+    //uses dp hashmap which caches the optimal path for a current point and a set of points remaining,
+    //such that subproblems are not recomputed
+    //this turns factorial time of trying all combos into exponential time
+    //return the optimal one
     public static ArrayList<Coordinate> pathFinder(ArrayList<Coordinate> points, Coordinate curr, Coordinate endPoint){
         double minLength = Double.MAX_VALUE;
         ArrayList<Coordinate> result = new ArrayList<Coordinate>();
@@ -282,6 +298,7 @@ public class MainActivity extends AppCompatActivity {
         return result;
     }
 
+    //helper method for recursion of pathFinder
     public static double helper(ArrayList<Coordinate> points, Coordinate prev, Coordinate endPoint, ArrayList<Coordinate> order, HashMap<String, ArrayList<Coordinate>> dp) {
         if(points.size() == 0) {
             return prev.distance(endPoint);
@@ -325,6 +342,7 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
+    //Coordinate class has fields lat, long, and alt. Also can calculate the distance between two inputted coords
     static class Coordinate{
         public Coordinate(double latitude, double longitude, double altitude) {
             this.latitude = latitude;
